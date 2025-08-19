@@ -28,7 +28,7 @@ A repository dedicated to an audio search system that uses fingerprinting techni
    ```bash
    pip install -r requirements.txt
 
-## Installation
+## How to Run
 
 1. run `pip install requirements.txt`
 2. a. for adding a mp3 song to database `python MP3toDatabase.py --song 'asong.mp3'`, for folder which contain mp3 `python MP3toDatabase.py --folder 'mp3_folder'`
