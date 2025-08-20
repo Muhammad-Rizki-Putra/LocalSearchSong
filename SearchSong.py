@@ -82,13 +82,12 @@ def recognize_from_db(query_path, db_path=DB_PATH):
         db_path (str): Path to the SQLite database file.
         
     Returns:
-        tuple: (best_matching_song_name, confidence_score) or None if no match is found.
+        tuple: (best_matching_song_name, confidence_score, offset_time) or None if no match is found.
     """
     if not os.path.exists(db_path):
         print(f"Database file not found at '{db_path}'. Please create it first.")
         return None
 
-    # 1. Fingerprint the query clip
     print(f"Fingerprinting query file: {query_path}...")
     query_fingerprints = fingerprint_song(query_path)
     
@@ -96,17 +95,13 @@ def recognize_from_db(query_path, db_path=DB_PATH):
         print("Could not generate fingerprints for the query clip.")
         return None
         
-    # Create a dictionary for quick lookup of query timestamps by hash
     query_hashes = {h: t for h, t in query_fingerprints}
     
-    # 2. Query the database to find all hashes that match our query
     conn = sqlite3.connect(db_path)
     cur = conn.cursor()
     
-    # Create placeholders for the IN clause
     placeholders = ', '.join('?' for _ in query_hashes)
     
-    # This single query fetches all potential matches at once. It's very fast.
     sql_query = f"""
         SELECT f.hash, s.name, f.offset_time
         FROM fingerprints f
@@ -120,8 +115,8 @@ def recognize_from_db(query_path, db_path=DB_PATH):
     if not db_matches:
         return None
 
-    # 3. Process matches and "vote" for the best (song, offset) pair
-    matches = defaultdict(int) # A dictionary to store vote counts
+    matches = defaultdict(int) 
+    offset_details = {}
     
     print(f"Found {len(db_matches)} potential hash matches in the database.")
     
@@ -131,15 +126,19 @@ def recognize_from_db(query_path, db_path=DB_PATH):
         key = (song_name, offset)
         matches[key] += 1
         
-    # 4. Find the best match with the highest number of votes
     if not matches:
         return None
         
     best_match = max(matches.items(), key=lambda item: item[1])
     (song_name, offset), score = best_match
     
-    return (song_name, score)
+    return (song_name, score, offset)
 
+def format_time_position(seconds):
+    """Convert seconds to minutes:seconds format"""
+    minutes = int(seconds // 60)
+    seconds_remaining = int(seconds % 60)
+    return f"{minutes}:{seconds_remaining:02d}"
 
 # --- Main Execution Section ---
 if __name__ == "__main__":
@@ -156,8 +155,16 @@ if __name__ == "__main__":
         
         print("\n--- Recognition Result ---")
         if result:
-            song, score = result
+            song, score, offset = result
+            position_str = format_time_position(offset)
             print(f"✅ Match Found: '{song}'")
+            print(f"   Position in song: {position_str} (at {offset:.2f} seconds)")
             print(f"   Confidence Score: {score} (number of matching hash pairs)")
+            
+            # Additional interpretation
+            if offset < 0:
+                print(f"   Note: The query clip appears to be from before the start of the stored song")
+            else:
+                print(f"   The query clip matches at {position_str} into the song")
         else:
             print("❌ No match found in the database.")
